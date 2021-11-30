@@ -138,8 +138,8 @@ Full example for a 32bit debug build with electron prune: build /target custom w
 
                 if (!Directory.Exists(checkForNodeModulesDirPath)|| parser.Contains(_paramForceNodeInstall) || parser.Contains(_paramPackageJson))
                 {
-                    Console.WriteLine("Start npm install...");
-                    ProcessHelper.CmdExecute("npm install --production", tempPath);
+                    Console.WriteLine("Start pnpm install...");
+                    ProcessHelper.CmdExecute("pnpm install --production", tempPath);
                 }
 
                 Console.WriteLine("ElectronHostHook handling started...");
@@ -151,11 +151,11 @@ Full example for a 32bit debug build with electron prune: build /target custom w
                     string hosthookDir = Path.Combine(tempPath, "ElectronHostHook");
                     DirectoryCopy.Do(electronhosthookDir, hosthookDir, true, new List<string>() { "node_modules" });
 
-                    Console.WriteLine("Start npm install for hosthooks...");
-                    ProcessHelper.CmdExecute("npm install", hosthookDir);
+                    Console.WriteLine("Start pnpm install for hosthooks...");
+                    ProcessHelper.CmdExecute("pnpm install", hosthookDir);
 
                     // ToDo: Not sure if this runs under linux/macos
-                    ProcessHelper.CmdExecute(@"npx tsc -p . --sourceMap false", hosthookDir);
+                    ProcessHelper.CmdExecute(@"pnpx tsc -p . --sourceMap false", hosthookDir);
                 }
 
                 Console.WriteLine("Build Electron Desktop Application...");

@@ -31,6 +31,7 @@ The current Electron.NET CLI builds Windows/macOS/Linux binaries. Our API uses .
 Also you should have installed:
 
 * npm [contained in nodejs](https://nodejs.org)
+* pnpm [Use nodejs preinstalled varriant](https://pnpm.io/installation)
 
 ## 💬 Community
 

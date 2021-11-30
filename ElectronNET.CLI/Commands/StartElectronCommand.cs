@@ -121,38 +121,38 @@ namespace ElectronNET.CLI.Commands
 
                 var nodeModulesDirPath = Path.Combine(tempPath, "node_modules");
 
-                bool runNpmInstall = false;
+                bool runPnpmInstall = false;
 
                 Console.WriteLine("node_modules in: " + nodeModulesDirPath);
 
                 if (!Directory.Exists(nodeModulesDirPath))
                 {
-                    runNpmInstall = true;
+                    runPnpmInstall = true;
                 }
 
                 var packagesJson = Path.Combine(tempPath, "package.json");
                 var packagesPrevious = Path.Combine(tempPath, "package.json.previous");
 
-                if (!runNpmInstall)
+                if (!runPnpmInstall)
                 {
 
                     if (File.Exists(packagesPrevious))
                     {
                         if (File.ReadAllText(packagesPrevious) != File.ReadAllText(packagesJson))
                         {
-                            runNpmInstall = true;
+                            runPnpmInstall = true;
                         }
                     }
                     else
                     {
-                        runNpmInstall = true;
+                        runPnpmInstall = true;
                     }
                 }
 
-                if (runNpmInstall)
+                if (runPnpmInstall)
                 {
                     Console.WriteLine("Start npm install...");
-                    ProcessHelper.CmdExecute("npm install", tempPath);
+                    ProcessHelper.CmdExecute("pnpm install", tempPath);
                     File.Copy(packagesJson, packagesPrevious, true);
                 }
 
@@ -166,10 +166,10 @@ namespace ElectronNET.CLI.Commands
                     DirectoryCopy.Do(electronhosthookDir, hosthookDir, true, new List<string>() { "node_modules" });
 
                     Console.WriteLine("Start npm install for typescript & hosthooks...");
-                    ProcessHelper.CmdExecute("npm install", hosthookDir);
+                    ProcessHelper.CmdExecute("pnpm install", hosthookDir);
 
                     // ToDo: Not sure if this runs under linux/macos
-                    ProcessHelper.CmdExecute(@"npx tsc -p ../../ElectronHostHook", tempPath);
+                    ProcessHelper.CmdExecute(@"pnpx tsc -p ../../ElectronHostHook", tempPath);
                 }
 
                 string arguments = "";

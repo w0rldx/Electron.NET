@@ -17,8 +17,8 @@ echo "Start building Electron.NET dev stack..."
 
 echo "Build Electron Host"
 pushd $dir//ElectronNET.Host
-    npm install
-    npm run-script start
+    pnpm install
+    pnpm run-script start
 popd
 
 echo "Restore & Build API"

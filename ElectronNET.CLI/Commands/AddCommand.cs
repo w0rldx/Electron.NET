@@ -69,11 +69,11 @@ namespace ElectronNET.CLI.Commands
 
                 // npm for typescript compiler etc.
                 Console.WriteLine("Start npm install...");
-                ProcessHelper.CmdExecute("npm install", targetFilePath);
+                ProcessHelper.CmdExecute("pnpm install", targetFilePath);
 
                 // run typescript compiler
                 // ToDo: Not sure if this runs under linux/macos
-                ProcessHelper.CmdExecute(@"npx tsc -p ../../", targetFilePath);
+                ProcessHelper.CmdExecute(@"pnpx tsc -p ../../", targetFilePath);
 
                 // search .csproj or .fsproj (.csproj has higher precedence)
                 Console.WriteLine($"Search your .csproj/.fsproj to add configure CopyToPublishDirectory to 'Never'");
