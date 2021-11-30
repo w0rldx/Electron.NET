@@ -1,6 +1,6 @@
 "use strict";
-const electron_updater_1 = require("electron-updater");
 const electron_1 = require("electron");
+const electron_updater_1 = require("electron-updater");
 let electronSocket;
 module.exports = (socket, app) => {
     electronSocket = socket;
@@ -87,25 +87,30 @@ module.exports = (socket, app) => {
         electron_updater_1.autoUpdater.requestHeaders = value;
     });
     socket.on('autoUpdaterCheckForUpdatesAndNotify', async (guid) => {
-        electron_updater_1.autoUpdater.checkForUpdatesAndNotify().then((updateCheckResult) => {
+        electron_updater_1.autoUpdater
+            .checkForUpdatesAndNotify()
+            .then((updateCheckResult) => {
             electronSocket.emit('autoUpdaterCheckForUpdatesAndNotifyComplete' + guid, updateCheckResult);
-        }).catch((error) => {
+        })
+            .catch((error) => {
             electronSocket.emit('autoUpdaterCheckForUpdatesAndNotifyError' + guid, error);
         });
     });
     socket.on('autoUpdaterCheckForUpdates', async (guid) => {
-        electron_updater_1.autoUpdater.checkForUpdates().then((updateCheckResult) => {
+        electron_updater_1.autoUpdater
+            .checkForUpdates()
+            .then((updateCheckResult) => {
             electronSocket.emit('autoUpdaterCheckForUpdatesComplete' + guid, updateCheckResult);
-        }).catch((error) => {
+        })
+            .catch((error) => {
             electronSocket.emit('autoUpdaterCheckForUpdatesError' + guid, error);
         });
     });
     socket.on('autoUpdaterQuitAndInstall', async (isSilent, isForceRunAfter) => {
-        app.removeAllListeners("window-all-closed");
-        
+        app.removeAllListeners('window-all-closed');
         const windows = electron_1.BrowserWindow.getAllWindows();
         if (windows.length) {
-            windows.forEach(w => {
+            windows.forEach((w) => {
                 try {
                     w.removeAllListeners('close');
                     w.removeAllListeners('closed');
@@ -116,7 +121,7 @@ module.exports = (socket, app) => {
                 }
             });
         }
-        //The call to quitAndInstall needs to happen after the windows 
+        //The call to quitAndInstall needs to happen after the windows
         //get a chance to close and release resources, so it must be done on a timeout
         setTimeout(() => {
             electron_updater_1.autoUpdater.quitAndInstall(isSilent, isForceRunAfter);

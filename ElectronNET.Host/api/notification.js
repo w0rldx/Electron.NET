@@ -1,6 +1,7 @@
 "use strict";
 const electron_1 = require("electron");
-const notifications = (global['notifications'] = global['notifications'] || []);
+const notifications = (global['notifications'] =
+    global['notifications'] || []);
 let electronSocket;
 module.exports = (socket) => {
     electronSocket = socket;
@@ -34,7 +35,10 @@ module.exports = (socket) => {
         if (options.actionID) {
             haveEvent = true;
             notification.on('action', (event, value) => {
-                electronSocket.emit('NotificationEventAction', [options.actionID, value]);
+                electronSocket.emit('NotificationEventAction', [
+                    options.actionID,
+                    value,
+                ]);
             });
         }
         if (haveEvent) {

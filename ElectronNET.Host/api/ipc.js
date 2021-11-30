@@ -17,7 +17,7 @@ module.exports = (socket) => {
             let wc = electron_1.webContents.fromId(wcId);
             let bw = electron_1.BrowserWindow.fromWebContents(wc);
             if (bw) {
-                electronSocket.emit(channel, { id: bw.id, wcId: wcId, args: [args] });
+                electronSocket.emit(channel, { id: bw.id, args: [args] });
             }
             event.returnValue = null;
         });
@@ -50,7 +50,8 @@ module.exports = (socket) => {
         }
     });
     socket.on('sendToIpcRendererBrowserView', (id, channel, ...data) => {
-        const browserViews = (global['browserViews'] = global['browserViews'] || []);
+        const browserViews = (global['browserViews'] =
+            global['browserViews'] || []);
         let view = null;
         for (let i = 0; i < browserViews.length; i++) {
             if (browserViews[i]['id'] === id) {

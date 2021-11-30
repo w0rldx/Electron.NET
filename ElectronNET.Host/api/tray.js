@@ -1,27 +1,38 @@
 "use strict";
 const electron_1 = require("electron");
-let tray = (global['$tray'] = global['tray'] || { value: null });
+let tray = (global['$tray'] = global['tray'] || {
+    value: null,
+});
 let electronSocket;
 module.exports = (socket) => {
     electronSocket = socket;
     socket.on('register-tray-click', (id) => {
         if (tray.value && !tray.value.isDestroyed()) {
             tray.value.on('click', (event, bounds) => {
-                electronSocket.emit('tray-click-event' + id, { eventArgs: event.__proto__, bounds: bounds });
+                electronSocket.emit('tray-click-event' + id, [
+                    event.__proto__,
+                    bounds,
+                ]);
             });
         }
     });
     socket.on('register-tray-right-click', (id) => {
         if (tray.value && !tray.value.isDestroyed()) {
             tray.value.on('right-click', (event, bounds) => {
-                electronSocket.emit('tray-right-click-event' + id, { eventArgs: event.__proto__, bounds: bounds });
+                electronSocket.emit('tray-right-click-event' + id, [
+                    event.__proto__,
+                    bounds,
+                ]);
             });
         }
     });
     socket.on('register-tray-double-click', (id) => {
         if (tray.value && !tray.value.isDestroyed()) {
             tray.value.on('double-click', (event, bounds) => {
-                electronSocket.emit('tray-double-click-event' + id, { eventArgs: event.__proto__, bounds: bounds });
+                electronSocket.emit('tray-double-click-event' + id, [
+                    event.__proto__,
+                    bounds,
+                ]);
             });
         }
     });
@@ -89,7 +100,7 @@ module.exports = (socket) => {
         }
     });
     socket.on('tray-isDestroyed', () => {
-        if (tray.value) {
+        if (tray.value && !tray.value.isDestroyed()) {
             const isDestroyed = tray.value.isDestroyed();
             electronSocket.emit('tray-isDestroyedCompleted', isDestroyed);
         }
@@ -124,7 +135,9 @@ module.exports = (socket) => {
                 addMenuItemClickConnector(item.submenu.items, callback);
             }
             if ('id' in item && item.id) {
-                item.click = () => { callback(item.id); };
+                item.click = () => {
+                    callback(item.id);
+                };
             }
         });
     }

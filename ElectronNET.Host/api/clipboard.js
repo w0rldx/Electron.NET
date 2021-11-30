@@ -50,7 +50,9 @@ module.exports = (socket) => {
     });
     socket.on('clipboard-readImage', (type) => {
         const image = electron_1.clipboard.readImage(type);
-        electronSocket.emit('clipboard-readImage-Completed', { 1: image.toPNG().toString('base64') });
+        electronSocket.emit('clipboard-readImage-Completed', {
+            1: image.toPNG().toString('base64'),
+        });
     });
     socket.on('clipboard-writeImage', (data, type) => {
         const dataContent = JSON.parse(data);

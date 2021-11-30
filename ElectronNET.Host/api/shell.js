@@ -14,7 +14,7 @@ module.exports = (socket) => {
     socket.on('shell-openExternal', async (url, options) => {
         let result = '';
         if (options) {
-            await electron_1.shell.openExternal(url, options).catch(e => {
+            await electron_1.shell.openExternal(url, options).catch((e) => {
                 result = e.message;
             });
         }

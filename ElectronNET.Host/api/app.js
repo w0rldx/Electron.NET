@@ -18,13 +18,11 @@ module.exports = (socket, app) => {
             electronSocket.emit('app-window-all-closed' + appWindowAllClosedEventId);
         }
     });
-
     app.on('activate', () => {
         // On macOS it's common to re-create a window in the app when the
         // dock icon is clicked and there are no other windows open.
         electronSocket.emit('app-activate');
     });
-
     socket.on('quit-app-window-all-closed-event', (quit) => {
         isQuitWindowAllClosed = quit;
     });
@@ -100,11 +98,15 @@ module.exports = (socket, app) => {
     socket.on('appGetFileIcon', async (path, options) => {
         let error = {};
         if (options) {
-            const nativeImage = await app.getFileIcon(path, options).catch((errorFileIcon) => error = errorFileIcon);
+            const nativeImage = await app
+                .getFileIcon(path, options)
+                .catch((errorFileIcon) => (error = errorFileIcon));
             electronSocket.emit('appGetFileIconCompleted', [error, nativeImage]);
         }
         else {
-            const nativeImage = await app.getFileIcon(path).catch((errorFileIcon) => error = errorFileIcon);
+            const nativeImage = await app
+                .getFileIcon(path)
+                .catch((errorFileIcon) => (error = errorFileIcon));
             electronSocket.emit('appGetFileIconCompleted', [error, nativeImage]);
         }
     });
@@ -158,7 +160,7 @@ module.exports = (socket, app) => {
         const success = app.requestSingleInstanceLock();
         electronSocket.emit('appRequestSingleInstanceLockCompleted', success);
         app.on('second-instance', (event, args = [], workingDirectory = '') => {
-            electronSocket.emit('secondInstance', { args: args, workingDirectory: workingDirectory });
+            electronSocket.emit('secondInstance', [args, workingDirectory]);
         });
     });
     socket.on('appHasSingleInstanceLock', () => {
