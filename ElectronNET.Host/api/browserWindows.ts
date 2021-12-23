@@ -1,6 +1,7 @@
-import { Socket } from 'net';
-import { BrowserWindow, Menu, nativeImage } from 'electron';
-import { browserViewMediateService } from './browserView';
+import {Socket} from 'net';
+import {BrowserWindow, Menu, nativeImage} from 'electron';
+import {browserViewMediateService} from './browserView';
+
 const path = require('path');
 const windows: Electron.BrowserWindow[] = (global['browserWindows'] =
   global['browserWindows'] || []) as Electron.BrowserWindow[];
@@ -11,23 +12,22 @@ const proxyToCredentialsMap: { [proxy: string]: string } = (global[
   'proxyToCredentialsMap'
 ] = global['proxyToCredentialsMap'] || []) as { [proxy: string]: string };
 
-export = (socket: Socket, app: Electron.App) => {
-  electronSocket = socket;
+export = (socket: Socket, app: Electron.App, firstTime: boolean) => {
+    electronSocket = socket;
 
-  app.on('login', (event, webContents, request, authInfo, callback) => {
-    if (authInfo.isProxy) {
-      let proxy = `${authInfo.host}:${authInfo.port}`;
-      if (
-        proxy in proxyToCredentialsMap &&
-        proxyToCredentialsMap[proxy].split(':').length === 2
-      ) {
-        event.preventDefault();
-        let user = proxyToCredentialsMap[proxy].split(':')[0];
-        let pass = proxyToCredentialsMap[proxy].split(':')[1];
-        callback(user, pass);
-      }
+    if (firstTime) {
+        app.on('login', (event, webContents, request, authInfo, callback) => {
+            if (authInfo.isProxy) {
+                let proxy = `${authInfo.host}:${authInfo.port}`
+                if (proxy in proxyToCredentialsMap && proxyToCredentialsMap[proxy].split(':').length === 2) {
+                    event.preventDefault()
+                    let user = proxyToCredentialsMap[proxy].split(':')[0]
+                    let pass = proxyToCredentialsMap[proxy].split(':')[1]
+                    callback(user, pass)
+                }
+            }
+        })
     }
-  });
 
   socket.on('register-browserWindow-ready-to-show', (id) => {
     if (readyToShowWindowsIds.includes(id)) {
@@ -217,41 +217,33 @@ export = (socket: Socket, app: Electron.App) => {
     });
   });
 
-  socket.on('createBrowserWindow', (guid, options, loadUrl) => {
-    if (
-      options.webPreferences &&
-      !('nodeIntegration' in options.webPreferences)
-    ) {
-      options = {
-        ...options,
-        webPreferences: {
-          ...options.webPreferences,
-          nodeIntegration: true,
-          contextIsolation: false,
-        },
-      };
-    } else if (!options.webPreferences) {
-      options = {
-        ...options,
-        webPreferences: { nodeIntegration: true, contextIsolation: false },
-      };
-    }
+    socket.on('createBrowserWindow', (guid, options, loadUrl) => {
+        if (options.webPreferences && !('nodeIntegration' in options.webPreferences)) {
+            options = {
+                ...options,
+                webPreferences: {...options.webPreferences, nodeIntegration: true, contextIsolation: false}
+            };
+        } else if (!options.webPreferences) {
+            options = {...options, webPreferences: {nodeIntegration: true, contextIsolation: false}};
+        }
 
-    // we dont want to recreate the window when watch is ready.
-    if (
-      app.commandLine.hasSwitch('watch') &&
-      app['mainWindowURL'] === loadUrl
-    ) {
-      window = app['mainWindow'];
-      if (window) {
-        window.reload();
-        windows.push(window);
-        electronSocket.emit('BrowserWindowCreated' + guid, window.id);
-        return;
-      }
-    } else {
-      window = new BrowserWindow(options);
-    }
+        if (options.x && options.y && options.x == 0 && options.y == 0) {
+            delete options.x;
+            delete options.y;
+        }
+
+        // we dont want to recreate the window when watch is ready.
+        if (app.commandLine.hasSwitch('watch') && app['mainWindowURL'] === loadUrl) {
+            window = app['mainWindow'];
+            if (window) {
+                window.reload();
+                windows.push(window);
+                electronSocket.emit('BrowserWindowCreated' + guid, window.id);
+                return;
+            }
+        } else {
+            window = new BrowserWindow(options);
+        }
 
     if (options.proxy) {
       window.webContents.session.setProxy({ proxyRules: options.proxy });
@@ -261,26 +253,42 @@ export = (socket: Socket, app: Electron.App) => {
       proxyToCredentialsMap[options.proxy] = options.proxyCredentials;
     }
 
-    window.on('ready-to-show', () => {
-      if (readyToShowWindowsIds.includes(window.id)) {
-        readyToShowWindowsIds = readyToShowWindowsIds.filter(
-          (value) => value !== window.id
-        );
-      } else {
-        readyToShowWindowsIds.push(window.id);
-      }
-    });
+        window.on('ready-to-show', () => {
+            try {
+                window.id;
+            } catch (error) {
+                if (error.message === 'Object has been destroyed') {
+                    return;
+                }
+            }
 
-    window.on('closed', (sender: unknown) => {
-      again: for (let index = 0; index < windows.length; index++) {
-        const windowItem = windows[index];
-        try {
-          windowItem.id;
-        } catch (error) {
-          if (error.message === 'Object has been destroyed') {
-            windows.splice(index, 1);
-            break again;
-          }
+            if (readyToShowWindowsIds.includes(window.id)) {
+                readyToShowWindowsIds = readyToShowWindowsIds.filter(value => value !== window.id);
+            } else {
+                readyToShowWindowsIds.push(window.id);
+            }
+        });
+
+        window.on('closed', (sender) => {
+            again:
+                for (let index = 0; index < windows.length; index++) {
+                    const windowItem = windows[index];
+                    try {
+                        windowItem.id;
+                    } catch (error) {
+                        if (error.message === 'Object has been destroyed') {
+                            windows.splice(index, 1);
+                            break again;
+                        }
+                    }
+                }
+            const ids = [];
+            windows.forEach(x => ids.push(x.id));
+            electronSocket.emit('BrowserWindowUpdateOpenIDs', ids);
+        });
+
+        if (loadUrl) {
+            window.loadURL(loadUrl);
         }
       }
       const ids: number[] = [];
@@ -310,21 +318,20 @@ export = (socket: Socket, app: Electron.App) => {
     electronSocket.emit('BrowserWindowCreated' + guid, window.id);
   });
 
-  socket.on('browserWindowDestroy', (id) => {
-    getWindowById(id)?.destroy();
-  });
-
-  socket.on('browserWindowDestroyAll', () => {
-    const windows = BrowserWindow.getAllWindows();
-    let count = 0;
-    if (windows.length) {
-      windows.forEach((w) => {
-        try {
-          w.hide();
-          w.destroy();
-          count++;
-        } catch {
-          //ignore, probably already destroyed
+    socket.on('browserWindowDestroyAll', () => {
+        const windows = BrowserWindow.getAllWindows();
+        let count = 0;
+        if (windows.length) {
+            windows.forEach(w => {
+                try {
+                    w.removeAllListeners('close');
+                    w.hide();
+                    w.destroy();
+                    count++;
+                } catch {
+                    //ignore, probably already destroyed
+                }
+            });
         }
       });
     }
@@ -420,9 +427,16 @@ export = (socket: Socket, app: Electron.App) => {
     );
   });
 
-  socket.on('browserWindowSetFullScreen', (id, fullscreen) => {
-    getWindowById(id)?.setFullScreen(fullscreen);
-  });
+    socket.on('browserWindowSetFullScreen', (id, fullscreen) => {
+        getWindowById(id)?.setFullScreen(fullscreen);
+    });
+
+    socket.on('browserWindowSetBackgroundColor', (id, color) => {
+        getWindowById(id)?.setBackgroundColor(color);
+    });
+
+    socket.on('browserWindowIsFullScreen', (id) => {
+        const isFullScreen = getWindowById(id)?.isFullScreen() ?? null;
 
   socket.on('browserWindowSetBackgroundColor', (id, color) => {
     getWindowById(id)?.setBackgroundColor(color);
@@ -716,9 +730,13 @@ export = (socket: Socket, app: Electron.App) => {
     getWindowById(id)?.setMenu(menu);
   });
 
-  socket.on('browserWindowRemoveMenu', (id) => {
-    getWindowById(id)?.removeMenu();
-  });
+            if ('id' in item && item.id) {
+                item.click = () => {
+                    callback(item.id);
+                };
+            }
+        });
+    }
 
   function addMenuItemClickConnector(
     menuItems: any[],
@@ -874,29 +892,28 @@ export = (socket: Socket, app: Electron.App) => {
     electronSocket.emit('browserWindow-getChildWindows-completed' + id, ids);
   });
 
-  socket.on('browserWindowSetAutoHideCursor', (id, autoHide) => {
-    getWindowById(id)?.setAutoHideCursor(autoHide);
-  });
+    socket.on('browserWindowSetExcludedFromShownWindowsMenu', (id) => {
+        const w = getWindowById(id);
+        if (w) {
+            w.excludedFromShownWindowsMenu = true;
+        }
+    });
 
   socket.on('browserWindowSetVibrancy', (id, type) => {
     getWindowById(id)?.setVibrancy(type);
   });
 
-  socket.on('browserWindowSetExcludedFromShownWindowsMenu', (id) => {
-    const w = getWindowById(id);
-    if (w) w.excludedFromShownWindowsMenu = true;
-  });
-
-  socket.on('browserWindow-setBrowserView', (id, browserViewId) => {
-    getWindowById(id)?.setBrowserView(browserViewMediateService(browserViewId));
-  });
-
-  function getWindowById(id: number): Electron.BrowserWindow {
-    for (let index = 0; index < windows.length; index++) {
-      const element = windows[index];
-      try {
-        if (element.id === id) {
-          return element;
+    function getWindowById(id: number): Electron.BrowserWindow {
+        for (let index = 0; index < windows.length; index++) {
+            const element = windows[index];
+            try {
+                if (element.id === id) {
+                    return element;
+                }
+            } catch {
+                //Accessing .id might throw 'Object has been destroyed', so we ignore it here
+                //The "closed" event should clean this up
+            }
         }
       } catch {
         //Accessing .id might throw 'Object has been destroyed', so we ignore it here

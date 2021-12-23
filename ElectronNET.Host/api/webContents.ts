@@ -1,6 +1,7 @@
-import { Socket } from 'net';
-import { BrowserWindow, BrowserView } from 'electron';
-import { browserViewMediateService } from './browserView';
+import {Socket} from 'net';
+import {BrowserView, BrowserWindow} from 'electron';
+import {browserViewMediateService} from './browserView';
+
 const fs = require('fs');
 let electronSocket: Socket;
 
@@ -217,18 +218,15 @@ export = (socket: Socket) => {
   socket.on('register-webContents-session-cookies-changed', (id) => {
     const browserWindow = getWindowById(id);
 
-    browserWindow.webContents.session.cookies.removeAllListeners('changed');
-    browserWindow.webContents.session.cookies.on(
-      'changed',
-      (event, cookie, cause, removed) => {
-        electronSocket.emit('webContents-session-cookies-changed' + id, [
-          cookie,
-          cause,
-          removed,
-        ]);
-      }
-    );
-  });
+        browserWindow.webContents.session.cookies.removeAllListeners('changed');
+        browserWindow.webContents.session.cookies.on('changed', (event, cookie, cause, removed) => {
+            electronSocket.emit('webContents-session-cookies-changed' + id, {
+                cookie: cookie,
+                cause: cause,
+                removed: removed
+            });
+        });
+    });
 
   socket.on('webContents-session-cookies-get', async (id, filter, guid) => {
     const browserWindow = getWindowById(id);
@@ -318,10 +316,9 @@ export = (socket: Socket) => {
     );
   });
 
-  socket.on('webContents-session-removeExtension', (id, name) => {
-    const browserWindow = getWindowById(id);
-    browserWindow.webContents.session.removeExtension(name);
-  });
+    socket.on('webContents-session-loadExtension', async (id, path, allowFileAccess = false) => {
+        const browserWindow = getWindowById(id);
+        const extension = await browserWindow.webContents.session.loadExtension(path, {allowFileAccess: allowFileAccess});
 
   socket.on(
     'webContents-session-loadExtension',

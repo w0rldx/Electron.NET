@@ -29,10 +29,10 @@ module.exports = (socket) => {
     socket.on('register-tray-double-click', (id) => {
         if (tray.value && !tray.value.isDestroyed()) {
             tray.value.on('double-click', (event, bounds) => {
-                electronSocket.emit('tray-double-click-event' + id, [
-                    event.__proto__,
-                    bounds,
-                ]);
+                electronSocket.emit('tray-double-click-event' + id, {
+                    eventArgs: event.__proto__,
+                    bounds: bounds
+                });
             });
         }
     });

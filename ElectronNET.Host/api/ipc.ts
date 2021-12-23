@@ -1,6 +1,7 @@
-import { ipcMain, BrowserWindow, BrowserView, webContents } from 'electron';
-import { Socket } from 'net';
-let electronSocket: Socket;
+import {BrowserView, BrowserWindow, ipcMain, webContents} from 'electron';
+import {Socket} from 'net';
+
+let electronSocket;
 
 export = (socket: Socket) => {
   electronSocket = socket;
@@ -12,16 +13,17 @@ export = (socket: Socket) => {
     });
   });
 
-  socket.on('registerIpcMainChannelWithId', (channel) => {
-    ipcMain.on(channel, (event, args) => {
-      event.preventDefault();
-      let wcId = event.sender.id;
-      let wc = webContents.fromId(wcId);
-      let bw = BrowserWindow.fromWebContents(wc);
-      if (bw) {
-        electronSocket.emit(channel, { id: bw.id, args: [args] });
-      }
-      event.returnValue = null;
+    socket.on('registerIpcMainChannelWithId', (channel) => {
+        ipcMain.on(channel, (event, args) => {
+            event.preventDefault();
+            let wcId = event.sender.id;
+            let wc = webContents.fromId(wcId)
+            let bw = BrowserWindow.fromWebContents(wc);
+            if (bw) {
+                electronSocket.emit(channel, {id: bw.id, wcId: wcId, args: [args]});
+            }
+            event.returnValue = null;
+        });
     });
   });
 

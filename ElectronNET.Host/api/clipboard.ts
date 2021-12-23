@@ -1,6 +1,7 @@
-import { Socket } from 'net';
-import { clipboard, nativeImage } from 'electron';
-let electronSocket: Socket;
+import {Socket} from 'net';
+import {clipboard, nativeImage} from 'electron';
+
+let electronSocket;
 
 export = (socket: Socket) => {
   electronSocket = socket;
@@ -58,29 +59,34 @@ export = (socket: Socket) => {
     electronSocket.emit('clipboard-availableFormats-Completed', formats);
   });
 
-  socket.on('clipboard-write', (data, type) => {
-    clipboard.write(data, type);
-  });
+    socket.on('clipboard-write', (data, type) => {
+        if (data.hasOwnProperty("image")) {
+            data["image"] = deserializeImage(data["image"]);
+        }
+        clipboard.write(data, type);
+    });
 
-  socket.on('clipboard-readImage', (type) => {
-    const image = clipboard.readImage(type);
-    electronSocket.emit('clipboard-readImage-Completed', {
-      1: image.toPNG().toString('base64'),
+    socket.on('clipboard-readImage', (type) => {
+        const image = clipboard.readImage(type);
+        electronSocket.emit('clipboard-readImage-Completed', {1: image.toPNG().toString('base64')});
     });
   });
 
-  socket.on('clipboard-writeImage', (data, type) => {
-    const dataContent = JSON.parse(data);
-    const image = nativeImage.createEmpty();
+    socket.on('clipboard-writeImage', (data, type) => {
+        const dataContent = JSON.parse(data);
+        const image = deserializeImage(dataContent);
+        clipboard.writeImage(image, type);
+    });
 
-    // tslint:disable-next-line: forin
-    for (const key in dataContent) {
-      const scaleFactor = key;
-      const bytes = data[key];
-      const buffer = Buffer.from(bytes, 'base64');
-      image.addRepresentation({ scaleFactor: +scaleFactor, buffer: buffer });
+    function deserializeImage(data) {
+        const image = nativeImage.createEmpty();
+        // tslint:disable-next-line: forin
+        for (const key in data) {
+            const scaleFactor = key;
+            const bytes = data[key];
+            const buffer = Buffer.from(bytes, 'base64');
+            image.addRepresentation({scaleFactor: +scaleFactor, buffer: buffer});
+        }
+        return image;
     }
-
-    clipboard.writeImage(image, type);
-  });
 };

@@ -1,6 +1,7 @@
-import { Socket } from 'net';
-import { app, Menu } from 'electron';
-let electronSocket: Socket;
+import {Socket} from 'net';
+import {app, Menu} from 'electron';
+
+let electronSocket;
 
 export = (socket: Socket) => {
   electronSocket = socket;
@@ -73,11 +74,11 @@ export = (socket: Socket) => {
         addMenuItemClickConnector(item.submenu.items, callback);
       }
 
-      if ('id' in item && item.id) {
-        item.click = () => {
-          callback(item.id);
-        };
-      }
-    });
-  }
+            if ('id' in item && item.id) {
+                item.click = () => {
+                    callback(item.id);
+                };
+            }
+        });
+    }
 };

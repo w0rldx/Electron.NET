@@ -5,8 +5,11 @@ const process = require('process');
 const portscanner = require('portscanner');
 const { imageSize } = require('image-size');
 const { connect } = require('http2');
+const crypto = require('crypto');
 
 fixPath(); //For macOS and Linux packaged-apps, the path variable might be missing
+
+const auth = crypto.randomBytes(32).toString('hex');
 
 let io, server, browserWindows, ipc, apiProcess, loadURL;
 let appApi, menu, dialogApi, notification, tray, webContents;
@@ -228,7 +231,8 @@ function startSocketApiBridge(port) {
     // otherwise the Windows Firewall will be triggered
     server = require('http').createServer();
     io = require('socket.io')();
-    io.attach(server);
+
+    io.attach(server, { pingTimeout: 10000, pingInterval: 5000 });
 
     server.listen(port, 'localhost');
     server.on('listening', function () {
@@ -249,7 +253,7 @@ function startSocketApiBridge(port) {
     io.on('connection', (socket) => {
 
         socket.on('disconnect', function (reason) {
-            console.log('Socket with .NET disconnect with reason: ' + reason);
+            console.log('Socket ' + socket.id + ' disconnected from .NET with reason: ' + reason);
             try {
                 if (hostHook) {
                     const hostHookScriptFilePath = path.join(__dirname, 'ElectronHostHook', 'index.js');
@@ -262,87 +266,92 @@ function startSocketApiBridge(port) {
             }
         });
 
+        socket.on("auth", function (authKey) {
 
-        if (global['electronsocket'] === undefined) {
+            if (authKey != auth) {
+                throw new Error("Invalid auth key");
+            }
+
+            //We only hook to events on app on the first initialization of each component
+            let firstTime = (global['electronsocket'] == undefined);
+
             global['electronsocket'] = socket;
-            global['electronsocket'].setMaxListeners(0);
-        }
+            socket.setMaxListeners(0);
 
-        console.log('.NET Application connected...', 'global.electronsocket', global['electronsocket'].id, new Date());
+            console.log('.NET connected on socket ' + socket.id + ' on ' + new Date());
 
-        if (appApi === undefined) appApi = require('./api/app')(socket, app);
-        if (browserWindows === undefined) browserWindows = require('./api/browserWindows')(socket, app);
-        if (commandLine === undefined) commandLine = require('./api/commandLine')(socket, app);
-        if (autoUpdater === undefined) autoUpdater = require('./api/autoUpdater')(socket, app);
-        if (ipc === undefined) ipc = require('./api/ipc')(socket);
-        if (menu === undefined) menu = require('./api/menu')(socket);
-        if (dialogApi === undefined) dialogApi = require('./api/dialog')(socket);
-        if (notification === undefined) notification = require('./api/notification')(socket);
-        if (tray === undefined) tray = require('./api/tray')(socket);
-        if (webContents === undefined) webContents = require('./api/webContents')(socket);
-        if (globalShortcut === undefined) globalShortcut = require('./api/globalShortcut')(socket);
-        if (shellApi === undefined) shellApi = require('./api/shell')(socket);
-        if (screen === undefined) screen = require('./api/screen')(socket);
-        if (clipboard === undefined) clipboard = require('./api/clipboard')(socket);
-        if (browserView === undefined) browserView = require('./api/browserView').browserViewApi(socket);
-        if (powerMonitor === undefined) powerMonitor = require('./api/powerMonitor')(socket);
-        if (nativeThemeApi === undefined) nativeThemeApi = require('./api/nativeTheme')(socket);
-        if (dock === undefined) dock = require('./api/dock')(socket);
+            appApi = require('./api/app')(socket, app, firstTime);
+            browserWindows = require('./api/browserWindows')(socket, app, firstTime);
+            commandLine = require('./api/commandLine')(socket, app);
+            autoUpdater = require('./api/autoUpdater')(socket, app);
+            ipc = require('./api/ipc')(socket);
+            menu = require('./api/menu')(socket);
+            dialogApi = require('./api/dialog')(socket);
+            notification = require('./api/notification')(socket);
+            tray = require('./api/tray')(socket);
+            webContents = require('./api/webContents')(socket);
+            globalShortcut = require('./api/globalShortcut')(socket);
+            shellApi = require('./api/shell')(socket);
+            screen = require('./api/screen')(socket);
+            clipboard = require('./api/clipboard')(socket);
+            browserView = require('./api/browserView').browserViewApi(socket);
+            powerMonitor = require('./api/powerMonitor')(socket);
+            nativeThemeApi = require('./api/nativeTheme')(socket);
+            dock = require('./api/dock')(socket);
 
-        socket.on('register-app-open-file-event', (id) => {
-            global['electronsocket'] = socket;
-
-            app.on('open-file', (event, file) => {
-                event.preventDefault();
-
-                global['electronsocket'].emit('app-open-file' + id, file);
+            socket.on('splashscreen-destroy', () => {
+                if (splashScreen) {
+                    splashScreen.destroy();
+                    splashScreen = null;
+                }
             });
 
-            if (launchFile) {
-                global['electronsocket'].emit('app-open-file' + id, launchFile);
-            }
-        });
+            socket.on('register-app-open-file-event', (id) => {
+                global['electronsocket'] = socket;
 
-        socket.on('splashscreen-destroy', () => {
-            if (splashScreen) {
-                splashScreen.destroy();
-                splashScreen = null;
-            }
-        });
+                app.on('open-file', (event, file) => {
+                    event.preventDefault();
+                    global['electronsocket'].emit('app-open-file' + id, file);
+                });
 
-        socket.on('register-app-open-url-event', (id) => {
-            global['electronsocket'] = socket;
-
-            app.on('open-url', (event, url) => {
-                event.preventDefault();
-
-                global['electronsocket'].emit('app-open-url' + id, url);
+                if (launchFile) {
+                    socket.emit('app-open-file' + id, launchFile);
+                }
             });
 
-            if (launchUrl) {
-                global['electronsocket'].emit('app-open-url' + id, launchUrl);
+            socket.on('register-app-open-url-event', (id) => {
+                global['electronsocket'] = socket;
+
+                app.on('open-url', (event, url) => {
+                    event.preventDefault();
+                    global['electronsocket'].emit('app-open-url' + id, url);
+                });
+
+                if (launchUrl) {
+                    socket.emit('app-open-url' + id, launchUrl);
+                }
+            });
+
+            socket.on('console-stdout', (data) => {
+                console.log(`stdout: ${data.toString()}`);
+            });
+
+            socket.on('console-stderr', (data) => {
+                console.log(`stderr: ${data.toString()}`);
+            });
+
+            try {
+                const hostHookScriptFilePath = path.join(__dirname, 'ElectronHostHook', 'index.js');
+
+                if (isModuleAvailable(hostHookScriptFilePath) && hostHook === undefined) {
+                    const { HookService } = require(hostHookScriptFilePath);
+                    hostHook = new HookService(socket, app);
+                    hostHook.onHostReady();
+                }
+            } catch (error) {
+                console.error(error.message);
             }
         });
-
-        socket.on('console-stdout', (data) => {
-            console.log(`stdout: ${data.toString()}`);
-        });
-
-        socket.on('console-stderr', (data) => {
-            console.log(`stderr: ${data.toString()}`);
-        });
-
-        try {
-            const hostHookScriptFilePath = path.join(__dirname, 'ElectronHostHook', 'index.js');
-
-            if (isModuleAvailable(hostHookScriptFilePath) && hostHook === undefined) {
-                const { HookService } = require(hostHookScriptFilePath);
-                hostHook = new HookService(socket, app);
-                hostHook.onHostReady();
-            }
-        } catch (error) {
-            console.error(error.message);
-        }
     });
 }
 
@@ -381,7 +390,7 @@ function startAspCoreBackend(electronPort) {
         if (manifestJsonFile.hasOwnProperty('detachedProcess')) {
             detachedProcess = manifestJsonFile.detachedProcess;
             if (detachedProcess) {
-                stdioopt = 'ignore';
+                stdioopt = ['pipe', 'ignore', 'ignore'];
             }
         }
 
@@ -410,9 +419,14 @@ function startAspCoreBackend(electronPort) {
             else if (os.platform() === 'darwin') {
                 //There is a bug on the updater on macOS never quiting and starting the update process
                 //We give Squirrel.Mac enough time to access the update file, and then just force-exit here
-                setTimeout(() => app.exit(0), 10_000);
+                setTimeout(() => app.exit(0), 30_000);
             }
         });
+
+
+        apiProcess.stdin.setEncoding = 'utf-8';
+        apiProcess.stdin.write('Auth=' + auth + '\n');
+        apiProcess.stdin.end();
 
         if (detachedProcess) {
             console.log('Detached from .NET process');
@@ -487,7 +501,6 @@ function getEnvironmentParameter() {
 
     return '';
 }
-
 
 
 //This code is derived from gh/sindresorhus/shell-path/, gh/sindresorhus/shell-env/, gh/sindresorhus/default-shell/, gh/chalk/ansi-regex, all under MIT license

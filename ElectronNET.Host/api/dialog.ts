@@ -1,6 +1,7 @@
-import { Socket } from 'net';
-import { BrowserWindow, dialog } from 'electron';
-let electronSocket: Socket;
+import {Socket} from 'net';
+import {BrowserWindow, dialog} from 'electron';
+
+let electronSocket;
 
 export = (socket: Socket) => {
   electronSocket = socket;
@@ -8,24 +9,21 @@ export = (socket: Socket) => {
     if ('id' in browserWindow) {
       const window = BrowserWindow.fromId(browserWindow.id);
 
-      const messageBoxReturnValue = await dialog.showMessageBox(
-        window,
-        options
-      );
-      electronSocket.emit('showMessageBoxComplete' + guid, [
-        messageBoxReturnValue.response,
-        messageBoxReturnValue.checkboxChecked,
-      ]);
-    } else {
-      const id = guid || options;
-      const messageBoxReturnValue = await dialog.showMessageBox(browserWindow);
+            const messageBoxReturnValue = await dialog.showMessageBox(window, options);
+            electronSocket.emit('showMessageBoxComplete' + guid, {
+                response: messageBoxReturnValue.response,
+                checked: messageBoxReturnValue.checkboxChecked
+            });
+        } else {
+            const id = guid || options;
+            const messageBoxReturnValue = await dialog.showMessageBox(browserWindow);
 
-      electronSocket.emit('showMessageBoxComplete' + id, [
-        messageBoxReturnValue.response,
-        messageBoxReturnValue.checkboxChecked,
-      ]);
-    }
-  });
+            electronSocket.emit('showMessageBoxComplete' + id, {
+                response: messageBoxReturnValue.response,
+                checked: messageBoxReturnValue.checkboxChecked
+            });
+        }
+    });
 
   socket.on('showOpenDialog', async (browserWindow, options, guid) => {
     const window = BrowserWindow.fromId(browserWindow.id);

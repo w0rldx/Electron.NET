@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
+using Nito.AsyncEx;
 using SocketIOClient;
 using SocketIOClient.JsonSerializer;
 using SocketIOClient.Newtonsoft.Json;
@@ -90,16 +91,24 @@ namespace ElectronNET.API
 
         private static readonly SemaphoreSlim _socketSemaphoreEmit = new(1, 1);
         private static readonly SemaphoreSlim _socketSemaphoreHandlers = new(1, 1);
-        
-        private static TaskCompletionSource<SocketIO> _connectedSocketTask = new();
-        
+
+        private static AsyncManualResetEvent _connectedSocketEvent = new AsyncManualResetEvent();
+
+        private static Dictionary<string, Action<SocketIOResponse>> _eventHandlers = new ();
+
         private static Task<SocketIO> _waitForConnection
         {
             get
             {
                 EnsureSocketTaskIsCreated();
-                return _connectedSocketTask.Task;
+                return GetSocket();
             }
+        }
+
+        private static async Task<SocketIO> GetSocket()
+        {
+            await _connectedSocketEvent.WaitAsync();
+            return _socket;
         }
 
         public static bool IsConnected => _waitForConnection is Task task && task.IsCompletedSuccessfully;
@@ -177,6 +186,11 @@ namespace ElectronNET.API
             _socketSemaphoreHandlers.Wait();
             try
             {
+                if (_eventHandlers.ContainsKey(eventString))
+                {
+                    _eventHandlers.Remove(eventString);
+                }
+
                 _socket.Off(eventString);
             }
             finally
@@ -192,7 +206,12 @@ namespace ElectronNET.API
             _socketSemaphoreHandlers.Wait();
             try
             {
-                _socket.On(eventString, _ =>
+                if (_eventHandlers.ContainsKey(eventString))
+                {
+                    _eventHandlers.Remove(eventString);
+                }
+
+                _eventHandlers.Add(eventString, _ =>
                 {
                     try
                     {
@@ -203,6 +222,8 @@ namespace ElectronNET.API
                         LogError(E, "Error running handler for event {0}", eventString);
                     }
                 });
+
+                _socket.On(eventString, _eventHandlers[eventString]);
             }
             finally
             {
@@ -217,17 +238,40 @@ namespace ElectronNET.API
             _socketSemaphoreHandlers.Wait();
             try
             {
-                _socket.On(eventString, (o) =>
+                if (_eventHandlers.ContainsKey(eventString))
+                {
+                    _eventHandlers.Remove(eventString);
+                }
+
+                _eventHandlers.Add(eventString, o =>
                 {
                     try
                     {
                         fn(o.GetValue<T>(0));
                     }
-                    catch(Exception E)
+                    catch (Exception E)
                     {
                         LogError(E, "Error running handler for event {0}", eventString);
                     }
                 });
+
+                _socket.On(eventString, _eventHandlers[eventString]);
+            }
+            finally
+            {
+                _socketSemaphoreHandlers.Release();
+            }
+        }
+
+        private static void RehookHandlers(SocketIO newSocket)
+        {
+            _socketSemaphoreHandlers.Wait();
+            try
+            {
+                foreach (var kv in _eventHandlers)
+                {
+                    newSocket.On(kv.Key, kv.Value);
+                }
             }
             finally
             {
@@ -375,10 +419,17 @@ namespace ElectronNET.API
             }
         }
 
+        private static Thread _backgroundMonitorThread;
+
         private static void EnsureSocketTaskIsCreated()
         {
             if (_socket is null)
             {
+                if(string.IsNullOrWhiteSpace(AuthKey))
+                {
+                    throw new Exception("You must call Electron.ReadAuth() first thing on your main entry point.");
+                }
+
                 if (HybridSupport.IsElectronActive)
                 {
                     lock (_syncRoot)
@@ -390,94 +441,70 @@ namespace ElectronNET.API
                                 EIO = 3,
                                 Reconnection = true,
                                 ReconnectionAttempts = int.MaxValue,
-                                ReconnectionDelay = 1000,
+                                ReconnectionDelay = 500,
                                 ReconnectionDelayMax = 5000,
                                 RandomizationFactor = 0.5,
                                 ConnectionTimeout = TimeSpan.FromSeconds(10)
                             });
 
                             socket.JsonSerializer = new CamelCaseNewtonsoftJsonSerializer();
+                            
+                            _connectedSocketEvent.Reset();
 
                             socket.OnConnected += (_, __) =>
                             {
-                                _connectedSocketTask.TrySetResult(socket);
-                                Log("ElectronNET socket connected on port {0}!", BridgeSettings.SocketPort);
+                                Task.Run(async () =>
+                                {
+                                    await socket.EmitAsync("auth", AuthKey);
+                                    _connectedSocketEvent.Set();
+                                    Log("ElectronNET socket {1} connected on port {0}!", BridgeSettings.SocketPort, socket.Id);
+                                });
                             };
 
                             socket.OnReconnectAttempt += (_, __) =>
                             {
-                                _connectedSocketTask = new();
-                                Log("ElectronNET socket is trying to reconnect on port {0}...", BridgeSettings.SocketPort);
+                                _connectedSocketEvent.Reset();
+                                Log("ElectronNET socket {1} is trying to reconnect on port {0}...", BridgeSettings.SocketPort, socket.Id);
                             };
 
                             socket.OnReconnectError += (_, ex) =>
                             {
-                                Log("ElectronNET socket failed to connect {0}", ex);
+                                _connectedSocketEvent.Reset();
+                                Log("ElectronNET socket {1} failed to connect {0}", ex, socket.Id);
                             };
 
                             socket.OnReconnected += (_, __) =>
                             {
-                                _connectedSocketTask.TrySetResult(socket);
-                                Log("ElectronNET socket reconnected on port {0}...", BridgeSettings.SocketPort);
+                                _connectedSocketEvent.Set();
+                                Log("ElectronNET socket {1} reconnected on port {0}...", BridgeSettings.SocketPort, socket.Id);
                             };
 
-
-                            socket.OnDisconnected += async (_, reason) =>
+                            socket.OnDisconnected += (_, reason) =>
                             {
-                                _connectedSocketTask = new();
-
-                                Log("ElectronNET socket disconnected with reason {0}, trying to reconnect on port {1}!", reason, BridgeSettings.SocketPort);
-
-                                int i = 0;
-                                    
-                                double miliseconds = 500;
-
-                                while (true)
-                                {
-                                    try
-                                    {
-                                        if (!socket.Connected)
-                                        {
-                                            await socket.ConnectAsync();
-                                            _connectedSocketTask.TrySetResult(socket); //Probably was already on the OnConnected call
-                                        }
-                                        return;
-                                    }
-                                    catch (Exception e)
-                                    {
-                                        LogError(e, "Failed to reconnect, will try again in {0} ms.", miliseconds * 2);
-                                    }
-
-                                    await Task.Delay(TimeSpan.FromMilliseconds(miliseconds));
-
-                                    miliseconds = Math.Min(60_000, Math.Pow(2, i) + 500);
-
-                                    i++;
-                                }
+                                _connectedSocketEvent.Reset();
+                                Log("ElectronNET socket {2} disconnected with reason {0}, trying to reconnect on port {1}!", reason, BridgeSettings.SocketPort, socket.Id);
                             };
+
+                            _socket = socket;
 
                             Task.Run(async () =>
                             {
                                 try
                                 {
-                                    if (!socket.Connected)
-                                    {
-                                        await socket.ConnectAsync();
-                                        _connectedSocketTask.TrySetResult(socket); //Probably was already on the OnConnected call
-                                    }
-                                    return;
+                                    await socket.ConnectAsync();
                                 }
                                 catch (Exception e)
                                 {
-                                    await Task.Delay(1000);
-                                    if (!socket.Connected)
+                                    Console.WriteLine(e.ToString());
+                                    
+                                    if(!App.TryRaiseOnSocketConnectFail())
                                     {
-                                        LogError(e, "Failed to connect");
+                                        Environment.Exit(0xDEAD);
                                     }
                                 }
                             });
 
-                            _socket = socket;
+                            RehookHandlers(socket);
                         }
                         else
                         {
@@ -493,6 +520,7 @@ namespace ElectronNET.API
         }
 
         internal static ILogger<App> Logger { private get; set; }
+        internal static string AuthKey { private get; set; }
 
         private class CamelCaseNewtonsoftJsonSerializer : NewtonsoftJsonSerializer
         {

@@ -8,20 +8,21 @@ let readyToShowWindowsIds = [];
 let window, electronSocket;
 let mainWindowURL;
 const proxyToCredentialsMap = (global['proxyToCredentialsMap'] = global['proxyToCredentialsMap'] || []);
-module.exports = (socket, app) => {
+module.exports = (socket, app, firstTime) => {
     electronSocket = socket;
-    app.on('login', (event, webContents, request, authInfo, callback) => {
-        if (authInfo.isProxy) {
-            let proxy = `${authInfo.host}:${authInfo.port}`;
-            if (proxy in proxyToCredentialsMap &&
-                proxyToCredentialsMap[proxy].split(':').length === 2) {
-                event.preventDefault();
-                let user = proxyToCredentialsMap[proxy].split(':')[0];
-                let pass = proxyToCredentialsMap[proxy].split(':')[1];
-                callback(user, pass);
+    if (firstTime) {
+        app.on('login', (event, webContents, request, authInfo, callback) => {
+            if (authInfo.isProxy) {
+                let proxy = `${authInfo.host}:${authInfo.port}`;
+                if (proxy in proxyToCredentialsMap && proxyToCredentialsMap[proxy].split(':').length === 2) {
+                    event.preventDefault();
+                    let user = proxyToCredentialsMap[proxy].split(':')[0];
+                    let pass = proxyToCredentialsMap[proxy].split(':')[1];
+                    callback(user, pass);
+                }
             }
-        }
-    });
+        });
+    }
     socket.on('register-browserWindow-ready-to-show', (id) => {
         var _a;
         if (readyToShowWindowsIds.includes(id)) {
@@ -208,15 +209,10 @@ module.exports = (socket, app) => {
         });
     });
     socket.on('createBrowserWindow', (guid, options, loadUrl) => {
-        if (options.webPreferences &&
-            !('nodeIntegration' in options.webPreferences)) {
+        if (options.webPreferences && !('nodeIntegration' in options.webPreferences)) {
             options = {
                 ...options,
-                webPreferences: {
-                    ...options.webPreferences,
-                    nodeIntegration: true,
-                    contextIsolation: false,
-                },
+                webPreferences: { ...options.webPreferences, nodeIntegration: true, contextIsolation: false }
             };
         }
         else if (!options.webPreferences) {
@@ -224,6 +220,10 @@ module.exports = (socket, app) => {
                 ...options,
                 webPreferences: { nodeIntegration: true, contextIsolation: false },
             };
+        }
+        if (options.x && options.y && options.x == 0 && options.y == 0) {
+            delete options.x;
+            delete options.y;
         }
         // we dont want to recreate the window when watch is ready.
         if (app.commandLine.hasSwitch('watch') &&
@@ -246,6 +246,14 @@ module.exports = (socket, app) => {
             proxyToCredentialsMap[options.proxy] = options.proxyCredentials;
         }
         window.on('ready-to-show', () => {
+            try {
+                window.id;
+            }
+            catch (error) {
+                if (error.message === 'Object has been destroyed') {
+                    return;
+                }
+            }
             if (readyToShowWindowsIds.includes(window.id)) {
                 readyToShowWindowsIds = readyToShowWindowsIds.filter((value) => value !== window.id);
             }
@@ -755,12 +763,12 @@ module.exports = (socket, app) => {
     });
     socket.on('browserWindowSetExcludedFromShownWindowsMenu', (id) => {
         const w = getWindowById(id);
-        if (w)
+        if (w) {
             w.excludedFromShownWindowsMenu = true;
+        }
     });
     socket.on('browserWindow-setBrowserView', (id, browserViewId) => {
-        var _a;
-        (_a = getWindowById(id)) === null || _a === void 0 ? void 0 : _a.setBrowserView((0, browserView_1.browserViewMediateService)(browserViewId));
+        getWindowById(id)?.setBrowserView((0, browserView_1.browserViewMediateService)(browserViewId));
     });
     function getWindowById(id) {
         for (let index = 0; index < windows.length; index++) {
